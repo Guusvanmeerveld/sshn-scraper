@@ -6,3 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4.38"
+graphql_client = "0.14.0"
+reqwest = { version = "0.12.3", default-features = false, features = [
+    "rustls-tls",
+    "json",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+] }
+scraper = "0.19.0"
+serde = "1.0.198"
+serde_urlencoded = "0.7.1"
+thiserror = "1.0.58"
+
+[dev-dependencies]
+tokio = { version = "1.37.0", features = ["full"] }
