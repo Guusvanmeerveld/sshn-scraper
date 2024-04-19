@@ -1,0 +1,61 @@
+query GetPublicationsList(
+  $orderBy: HousingPublicationsOrder
+  $first: Int = 20
+  $after: String
+  $where: HousingWherePublicationsInput
+  $locale: String = "en-US"
+) {
+  housingPublications(
+    orderBy: $orderBy
+    first: $first
+    after: $after
+    where: $where
+    locale: $locale
+  ) {
+    nodes {
+      pageInfo {
+        startCursor
+        endCursor
+        hasNextPage
+        hasPreviousPage
+      }
+      edges {
+        cursor
+        node {
+          ...PublicationListItem
+        }
+      }
+    }
+  }
+}
+
+fragment PublicationListItem on HousingPublication {
+  id
+  startTime
+  totalNumberOfApplications
+
+  url {
+    value
+  }
+
+  unit {
+    rentBenefit
+    externalUrl {
+      value
+    }
+    grossRent {
+      exact
+    }
+    location {
+      city {
+        name
+      }
+    }
+  }
+  #   allocationProcess {
+  #     ...PublicationListAllocationProcess
+  #   }
+  applicantSpecific {
+    allocationChance
+  }
+}
