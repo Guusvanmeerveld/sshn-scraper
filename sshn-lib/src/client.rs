@@ -5,8 +5,12 @@ use graphql_client::GraphQLQuery;
 
 use crate::{
     constants::{AUTH_URL, GRAPHQL_URL, LOCALE},
-    error::Result,
-    queries::{get_publications_list, GetPublicationsList, GraphqlResponse},
+    error::{Error, Result},
+    queries::{
+        get_publications_list,
+        post_application::{self, HousingApplyState},
+        GetPublicationsList, GraphqlResponse, PostApplication,
+    },
     tokens::{RefreshTokenResponse, Token},
 };
 
@@ -93,7 +97,46 @@ impl Client {
         Ok(body.data)
     }
 
-    pub async fn reply_to_publication<I: AsRef<str>>(&self, publication_id: I) -> Result<()> {
-        Ok(())
+    /// Reply to a publication, given that publications id.
+    pub async fn reply_to_publication<I: Into<String>>(&self, publication_id: I) -> Result<()> {
+        let variables = post_application::Variables {
+            publication_id: publication_id.into(),
+            locale: Some(String::from(LOCALE)),
+        };
+
+        let request_body = PostApplication::build_query(variables);
+
+        let response = self
+            .http_client
+            .post(&self.base_url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", self.access_token.as_ref()),
+            )
+            .json(&request_body)
+            .send()
+            .await?;
+
+        match response.error_for_status() {
+            Ok(response) => {
+                let body = response
+                    .json::<GraphqlResponse<post_application::ResponseData>>()
+                    .await?;
+
+                if let Some(unit) = body.data.housing_apply_to_unit {
+                    match unit.state {
+                        HousingApplyState::OK => {}
+                        _ => {
+                            let error = Error::Api(unit.description.unwrap_or(String::new()));
+
+                            return Err(error);
+                        }
+                    };
+                };
+
+                Ok(())
+            }
+            Err(err) => Err(Error::HttpRequest(err)),
+        }
     }
 }

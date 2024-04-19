@@ -59,3 +59,20 @@ fragment PublicationListItem on HousingPublication {
     allocationChance
   }
 }
+
+mutation PostApplication($publicationId: ID!, $locale: String) {
+  housingApplyToUnit(
+    input: { publicationId: $publicationId }
+    locale: $locale
+  ) {
+    state
+    description
+    userErrors {
+      field
+      message {
+        locale
+        text
+      }
+    }
+  }
+}

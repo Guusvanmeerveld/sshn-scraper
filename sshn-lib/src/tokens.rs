@@ -34,8 +34,11 @@ impl AsRef<str> for Token {
 }
 
 impl Token {
-    pub fn new(content: String, expires: DateTime<Utc>) -> Self {
-        Self { content, expires }
+    pub fn new<C: Into<String>>(content: C, expires: DateTime<Utc>) -> Self {
+        Self {
+            content: content.into(),
+            expires,
+        }
     }
 
     pub fn content(&self) -> &str {

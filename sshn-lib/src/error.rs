@@ -1,17 +1,13 @@
-use std::{fmt::Display, result};
+use std::result;
 
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ClientError {
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Error from SSHN API: {0}")]
+    Api(String),
+    #[error("Error encoding form data: {0}")]
     EncodeFormData(#[from] serde_urlencoded::ser::Error),
+    #[error("Error sending HTTP request: {0}")]
     HttpRequest(#[from] reqwest::Error),
 }
 
-impl Display for ClientError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "")
-    }
-}
-
-pub type Result<T> = result::Result<T, ClientError>;
+pub type Result<T> = result::Result<T, Error>;

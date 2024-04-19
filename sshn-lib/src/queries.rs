@@ -13,7 +13,15 @@ type DateTimeOffset = String;
 )]
 pub struct GetPublicationsList;
 
-#[derive(Deserialize)]
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schema.graphql",
+    query_path = "queries.graphql",
+    response_derives = "Debug"
+)]
+pub struct PostApplication;
+
+#[derive(Deserialize, Debug)]
 pub struct GraphqlResponse<T> {
     pub data: T,
 }

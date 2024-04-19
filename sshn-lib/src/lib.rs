@@ -8,6 +8,8 @@ pub use crate::client::Client;
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use crate::{constants::GRAPHQL_URL, tokens::Token};
 
     use super::*;
@@ -28,5 +30,12 @@ mod tests {
         let data = client.get_publications_list(30).await.unwrap();
 
         println!("{:?}", data);
+    }
+
+    #[tokio::test]
+    async fn test_post_application() {
+        let client = Client::new(GRAPHQL_URL, Token::new("", Utc::now()));
+
+        client.reply_to_publication("").await.unwrap();
     }
 }
