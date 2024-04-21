@@ -76,3 +76,12 @@ mutation PostApplication($publicationId: ID!, $locale: String) {
     }
   }
 }
+
+query GetIdentityConfig($realm: String!) {
+  identityConfig(realm: $realm) {
+    self
+    authorization_endpoint
+    token_endpoint
+    portalClientId
+  }
+}

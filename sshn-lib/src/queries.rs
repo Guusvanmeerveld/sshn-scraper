@@ -21,6 +21,14 @@ pub struct GetPublicationsList;
 )]
 pub struct PostApplication;
 
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schema.graphql",
+    query_path = "queries.graphql",
+    response_derives = "Debug"
+)]
+pub struct GetIdentityConfig;
+
 #[derive(Deserialize, Debug)]
 pub struct GraphqlResponse<T> {
     pub data: T,

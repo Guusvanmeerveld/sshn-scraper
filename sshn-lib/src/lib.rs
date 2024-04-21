@@ -4,38 +4,44 @@ pub mod error;
 mod queries;
 mod tokens;
 
-pub use crate::client::Client;
+pub use crate::client::{AuthenticatedClient, Client};
 
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
 
-    use crate::{constants::GRAPHQL_URL, tokens::Token};
+    use crate::client::LoginType;
 
     use super::*;
 
     #[tokio::test]
-    async fn test_refresh_token_login() {
-        let refresh_token = "";
-
-        let (client, _new_refresh_token) = Client::login_with_refresh_token(refresh_token)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
     async fn test_get_publications() {
-        let client = Client::new(GRAPHQL_URL, Token::default());
+        let client = Client::new(None);
 
-        let data = client.get_publications_list(30).await.unwrap();
+        let data = client.get_endpoints().await.unwrap();
 
         println!("{:?}", data);
     }
 
     #[tokio::test]
-    async fn test_post_application() {
-        let client = Client::new(GRAPHQL_URL, Token::new("", Utc::now()));
+    async fn test_login() {
+        dotenv::dotenv().ok();
 
-        client.reply_to_publication("").await.unwrap();
+        let username = std::env::var("SSHN_USERNAME").unwrap();
+        let password = std::env::var("SSHN_PASSWORD").unwrap();
+
+        let client = Client::new(None);
+
+        let _auth_client = client
+            .login(LoginType::Password { username, password })
+            .await
+            .unwrap();
     }
+
+    // #[tokio::test]
+    // async fn test_post_application() {
+    //     let client = Client::new(None);
+
+    //     client.reply_to_publication("").await.unwrap();
+    // }
 }

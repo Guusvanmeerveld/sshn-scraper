@@ -8,16 +8,12 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.38"
 graphql_client = "0.14.0"
-reqwest = { version = "0.12.3", default-features = false, features = [
-    "rustls-tls",
-    "json",
-    "charset",
-    "http2",
-    "macos-system-configuration",
-] }
-serde = "1.0.198"
+reqwest = { version = "0.12.3", features = ["json"] }
+
+serde = { version = "1.0.198", features = ["derive"] }
 serde_urlencoded = "0.7.1"
 thiserror = "1.0.58"
 
 [dev-dependencies]
+dotenv = "0.15.0"
 tokio = { version = "1.37.0", features = ["full"] }
