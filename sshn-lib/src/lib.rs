@@ -3,8 +3,11 @@ mod constants;
 pub mod error;
 mod queries;
 mod tokens;
+mod utils;
 
-pub use crate::client::{AuthenticatedClient, Client};
+pub use crate::client::{AuthenticatedClient, Client, LoginType};
+
+pub use utils::{generate_auth_url, get_code_challenge};
 
 #[cfg(test)]
 mod tests {

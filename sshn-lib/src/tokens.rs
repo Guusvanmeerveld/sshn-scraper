@@ -14,8 +14,16 @@ pub struct RefreshTokenResponse {
 
 #[derive(Debug)]
 pub struct Token {
+    r#type: TokenType,
     content: String,
     expires: DateTime<Utc>,
+}
+
+#[derive(Debug, Default)]
+pub enum TokenType {
+    #[default]
+    Access,
+    Refresh,
 }
 
 impl Default for Token {
@@ -23,6 +31,7 @@ impl Default for Token {
         Token {
             content: String::new(),
             expires: Utc::now(),
+            ..Default::default()
         }
     }
 }
@@ -34,10 +43,11 @@ impl AsRef<str> for Token {
 }
 
 impl Token {
-    pub fn new<C: Into<String>>(content: C, expires: DateTime<Utc>) -> Self {
+    pub fn new<C: Into<String>>(content: C, expires: DateTime<Utc>, token_type: TokenType) -> Self {
         Self {
             content: content.into(),
             expires,
+            r#type: token_type,
         }
     }
 

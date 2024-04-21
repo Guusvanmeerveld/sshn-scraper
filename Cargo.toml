@@ -1,4 +1,4 @@
 [workspace]
 
-members = ["sshn-lib"]
+members = [ "sshn-cli","sshn-lib"]
 resolver = "2"

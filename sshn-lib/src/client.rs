@@ -5,14 +5,14 @@ use graphql_client::GraphQLQuery;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    constants::{CLIENT_ID, GRAPHQL_URL, LOCALE, TOKEN_URL},
+    constants::{CLIENT_ID, GRAPHQL_URL, LOCALE, REDIRECT_URI, TOKEN_URL},
     error::{Error, Result},
     queries::{
         get_identity_config, get_publications_list,
         post_application::{self, HousingApplyState},
         GetIdentityConfig, GetPublicationsList, GraphqlResponse, PostApplication,
     },
-    tokens::{RefreshTokenResponse, Token},
+    tokens::{RefreshTokenResponse, Token, TokenType},
 };
 
 pub struct Client {
@@ -21,7 +21,7 @@ pub struct Client {
 }
 
 pub enum LoginType {
-    AuthCode(String),
+    AuthCode { code: String, verifier: String },
     Password { username: String, password: String },
 }
 
@@ -39,9 +39,11 @@ impl Client {
         params.insert("client_id", CLIENT_ID);
 
         match &login_type {
-            LoginType::AuthCode(code) => {
+            LoginType::AuthCode { code, verifier } => {
                 params.insert("grant_type", "authorization_code");
-                params.insert("authorization_code", code);
+                params.insert("redirect_uri", REDIRECT_URI);
+                params.insert("code_verifier", &verifier);
+                params.insert("code", code);
             }
             LoginType::Password { username, password } => {
                 params.insert("grant_type", "password");
@@ -64,32 +66,35 @@ impl Client {
             .send()
             .await?;
 
-        match response.error_for_status() {
-            Ok(response) => {
-                let tokens = response.json::<RefreshTokenResponse>().await?;
+        if let Err(err) = response.error_for_status_ref() {
+            log::debug!("{}", response.text().await?);
 
-                let access_token = Token::new(
-                    tokens.access_token,
-                    Utc::now() + Duration::seconds(tokens.expires_in),
-                );
+            return Err(Error::HttpRequest(err));
+        };
 
-                let refresh_token = Token::new(
-                    tokens.refresh_token,
-                    Utc::now() + Duration::seconds(tokens.refresh_expires_in),
-                );
+        let tokens = response.json::<RefreshTokenResponse>().await?;
 
-                let authenticated_client = AuthenticatedClient {
-                    graphql_url: self.graphql_url,
-                    http_client: self.http_client,
-                    token_url: TOKEN_URL.to_string(),
-                    access_token,
-                    refresh_token,
-                };
+        let access_token = Token::new(
+            tokens.access_token,
+            Utc::now() + Duration::seconds(tokens.expires_in),
+            TokenType::Access,
+        );
 
-                Ok(authenticated_client)
-            }
-            Err(err) => Err(Error::HttpRequest(err)),
-        }
+        let refresh_token = Token::new(
+            tokens.refresh_token,
+            Utc::now() + Duration::seconds(tokens.refresh_expires_in),
+            TokenType::Refresh,
+        );
+
+        let authenticated_client = AuthenticatedClient {
+            graphql_url: self.graphql_url,
+            http_client: self.http_client,
+            token_url: TOKEN_URL.to_string(),
+            access_token,
+            refresh_token,
+        };
+
+        Ok(authenticated_client)
     }
 
     pub async fn get_endpoints(&self) -> Result<get_identity_config::ResponseData> {
@@ -180,11 +185,13 @@ impl AuthenticatedClient {
         self.access_token = Token::new(
             tokens.access_token,
             Utc::now() + Duration::seconds(tokens.expires_in),
+            TokenType::Access,
         );
 
         self.refresh_token = Token::new(
             tokens.refresh_token,
             Utc::now() + Duration::seconds(tokens.refresh_expires_in),
+            TokenType::Refresh,
         );
 
         Ok(())
@@ -214,6 +221,10 @@ impl AuthenticatedClient {
         let response_body = response.json::<GraphqlResponse<T>>().await?;
 
         Ok(response_body.data)
+    }
+
+    pub fn tokens(&self) -> (&Token, &Token) {
+        (&self.access_token, &self.refresh_token)
     }
 
     /// Reply to a publication, given that publications id.

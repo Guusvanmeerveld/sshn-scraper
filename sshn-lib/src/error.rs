@@ -12,6 +12,8 @@ pub enum Error {
     TokenExpired,
     #[error("The authentication endpoint is missing")]
     NoAuthUrl,
+    #[error("Failed to parse url: {0}")]
+    ParseUrl(#[from] url::ParseError),
 }
 
 pub type Result<T> = result::Result<T, Error>;
