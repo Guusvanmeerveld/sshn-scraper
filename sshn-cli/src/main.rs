@@ -2,12 +2,15 @@ use clap::{Parser, Subcommand};
 use rpassword::prompt_password;
 use serde::Serialize;
 
-use crate::commands::login::login;
-
+mod auth;
 mod commands;
 mod error;
+mod publication;
+mod secrets;
 
-/// Simple program to greet a person
+use auth::AuthOptions;
+
+/// SSHN command line interface.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -18,22 +21,33 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Login to the SSHN API.
     Login {
-        /// Username of the SSHN account
+        /// Username of the SSHN account.
         #[arg(short, long)]
         username: String,
 
-        /// Password of the SSHN account
+        /// Password of the SSHN account.
         #[arg(short, long)]
         password: Option<String>,
 
-        /// The login url
+        /// The login portal base url.
         #[arg(short, long)]
         login_url: Option<String>,
 
+        /// The web driver to use to connect to the browser.
         #[arg(short, long, default_value_t, value_enum)]
         webdriver: WebDriver,
     },
+
+    /// List the currently open publications.
+    List {
+        #[arg(short, long)]
+        limit: Option<usize>,
+    },
+
+    /// Reply to a publication with a given id.
+    Reply { id: String },
 }
 
 #[derive(clap::ValueEnum, Serialize, Debug, Clone, Default)]
@@ -46,7 +60,14 @@ pub enum WebDriver {
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    {
+        let mut builder = env_logger::Builder::from_default_env();
+
+        builder.filter_module("sshn_cli", log::LevelFilter::Info);
+        builder.filter_module("sshn_lib", log::LevelFilter::Info);
+
+        builder.init();
+    }
 
     let args = Args::parse();
 
@@ -69,9 +90,13 @@ async fn main() {
 
             log::info!("Logging in as user '{}'", username);
 
-            let login_result = login(&username, &password, webdriver, login_url).await;
-
-            match login_result {
+            match commands::login(
+                &username,
+                &password,
+                AuthOptions::default().webdriver(webdriver),
+            )
+            .await
+            {
                 Ok(_) => {
                     log::info!("Succesfully logged in as user '{}'", username)
                 }
@@ -79,6 +104,24 @@ async fn main() {
                     log::error!("Error logging in: {}", error);
                 }
             }
+        }
+
+        Commands::List { limit } => {
+            match commands::list(limit.unwrap_or(5)).await {
+                Ok(_) => {}
+                Err(error) => {
+                    log::error!("Error listing publications: {}", error);
+                }
+            };
+        }
+
+        Commands::Reply { id } => {
+            match commands::reply(id).await {
+                Ok(_) => {}
+                Err(error) => {
+                    log::error!("Error replying to publication: {}", error);
+                }
+            };
         }
     }
 }

@@ -10,6 +10,8 @@ pub enum Error {
     HttpRequest(#[from] reqwest::Error),
     #[error("The refresh token expired")]
     TokenExpired,
+    #[error("Missing refresh token to get new tokens")]
+    MissingRefreshToken,
     #[error("The authentication endpoint is missing")]
     NoAuthUrl,
     #[error("Failed to parse url: {0}")]

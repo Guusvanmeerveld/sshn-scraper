@@ -1,8 +1,8 @@
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
-pub struct RefreshTokenResponse {
+pub struct LoginResponse {
     pub access_token: String,
     pub expires_in: i64,
     pub refresh_expires_in: i64,
@@ -12,14 +12,31 @@ pub struct RefreshTokenResponse {
     // session_state: String,
 }
 
-#[derive(Debug)]
+impl Into<Tokens> for LoginResponse {
+    fn into(self) -> Tokens {
+        Tokens::new(
+            Token::new(
+                self.refresh_token,
+                Utc::now() + Duration::seconds(self.refresh_expires_in),
+                TokenType::Refresh,
+            ),
+            Token::new(
+                self.access_token,
+                Utc::now() + Duration::seconds(self.expires_in),
+                TokenType::Access,
+            ),
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Token {
     r#type: TokenType,
     content: String,
     expires: DateTime<Utc>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub enum TokenType {
     #[default]
     Access,
@@ -31,7 +48,7 @@ impl Default for Token {
         Token {
             content: String::new(),
             expires: Utc::now(),
-            ..Default::default()
+            r#type: TokenType::Access,
         }
     }
 }
@@ -57,5 +74,32 @@ impl Token {
 
     pub fn expires(&self) -> DateTime<Utc> {
         self.expires
+    }
+
+    pub fn has_expired(&self) -> bool {
+        self.expires <= Utc::now()
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Tokens {
+    refresh_token: Token,
+    access_token: Token,
+}
+
+impl Tokens {
+    pub fn new(refresh_token: Token, access_token: Token) -> Self {
+        Self {
+            refresh_token,
+            access_token,
+        }
+    }
+
+    pub fn refresh_token(&self) -> &Token {
+        &self.refresh_token
+    }
+
+    pub fn access_token(&self) -> &Token {
+        &self.access_token
     }
 }

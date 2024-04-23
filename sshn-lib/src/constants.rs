@@ -5,6 +5,6 @@ pub const TOKEN_URL: &str =
 
 pub const REDIRECT_URI: &str = "https://mijn.sshn.nl/authentication/callback";
 
-pub const LOCALE: &str = "nl-NL";
+pub const LOCALE: &str = "en-US";
 
 pub const CLIENT_ID: &str = "portal-legacy";

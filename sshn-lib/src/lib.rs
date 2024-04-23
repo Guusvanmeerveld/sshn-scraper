@@ -5,9 +5,11 @@ mod queries;
 mod tokens;
 mod utils;
 
-pub use crate::client::{AuthenticatedClient, Client, LoginType};
-
-pub use utils::{generate_auth_url, get_code_challenge};
+pub use {
+    client::{AuthenticatedClient, Client, LoginType},
+    tokens::{Token, TokenType, Tokens},
+    utils::{generate_auth_url, get_code_challenge},
+};
 
 #[cfg(test)]
 mod tests {

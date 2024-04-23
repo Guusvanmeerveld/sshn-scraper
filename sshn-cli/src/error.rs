@@ -11,6 +11,12 @@ pub enum Error {
     #[error("SSHN Api did not return valid authorization code")]
     MissingAuthCode,
 
+    #[error("SSHN Api did not return valid publications")]
+    MissingPublications,
+
+    #[error("Missing username and password credentials")]
+    MissingCredentials,
+
     #[error("Failed to start web driver")]
     WebDriverStart,
 
@@ -19,6 +25,12 @@ pub enum Error {
 
     #[error("Failed communicating with browser: {0}")]
     HeadlessBrowser(#[from] fantoccini::error::CmdError),
+
+    #[error("Keyring error: {0}")]
+    Keyring(#[from] keyring::Error),
+
+    #[error("Failed to serialize/deserialize JSON: {0}")]
+    Json(#[from] serde_json::Error),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

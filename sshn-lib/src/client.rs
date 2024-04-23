@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use chrono::{Duration, Utc};
 use graphql_client::GraphQLQuery;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -12,7 +11,7 @@ use crate::{
         post_application::{self, HousingApplyState},
         GetIdentityConfig, GetPublicationsList, GraphqlResponse, PostApplication,
     },
-    tokens::{RefreshTokenResponse, Token, TokenType},
+    tokens::{LoginResponse, Tokens},
 };
 
 pub struct Client {
@@ -22,6 +21,7 @@ pub struct Client {
 
 pub enum LoginType {
     AuthCode { code: String, verifier: String },
+    RefreshToken { token: String },
     Password { username: String, password: String },
 }
 
@@ -33,7 +33,7 @@ impl Client {
         }
     }
 
-    pub async fn login(self, login_type: LoginType) -> Result<AuthenticatedClient> {
+    pub async fn auth(&self, login_type: LoginType) -> Result<Tokens> {
         let mut params = HashMap::new();
 
         params.insert("client_id", CLIENT_ID);
@@ -42,8 +42,13 @@ impl Client {
             LoginType::AuthCode { code, verifier } => {
                 params.insert("grant_type", "authorization_code");
                 params.insert("redirect_uri", REDIRECT_URI);
+
                 params.insert("code_verifier", &verifier);
                 params.insert("code", code);
+            }
+            LoginType::RefreshToken { token } => {
+                params.insert("grant_type", "refresh_token");
+                params.insert("refresh_token", token);
             }
             LoginType::Password { username, password } => {
                 params.insert("grant_type", "password");
@@ -72,26 +77,19 @@ impl Client {
             return Err(Error::HttpRequest(err));
         };
 
-        let tokens = response.json::<RefreshTokenResponse>().await?;
+        let response_data = response.json::<LoginResponse>().await?;
 
-        let access_token = Token::new(
-            tokens.access_token,
-            Utc::now() + Duration::seconds(tokens.expires_in),
-            TokenType::Access,
-        );
+        Ok(response_data.into())
+    }
 
-        let refresh_token = Token::new(
-            tokens.refresh_token,
-            Utc::now() + Duration::seconds(tokens.refresh_expires_in),
-            TokenType::Refresh,
-        );
+    pub async fn login(self, login_type: LoginType) -> Result<AuthenticatedClient> {
+        let tokens = self.auth(login_type).await?;
 
         let authenticated_client = AuthenticatedClient {
-            graphql_url: self.graphql_url,
-            http_client: self.http_client,
-            token_url: TOKEN_URL.to_string(),
-            access_token,
-            refresh_token,
+            graphql_url: self.graphql_url.clone(),
+            http_client: reqwest::Client::new(),
+            client: self,
+            tokens,
         };
 
         Ok(authenticated_client)
@@ -149,57 +147,36 @@ impl Client {
 
 pub struct AuthenticatedClient {
     graphql_url: String,
-    token_url: String,
     http_client: reqwest::Client,
-    access_token: Token,
-    refresh_token: Token,
+    client: Client,
+    tokens: Tokens,
+}
+
+impl Into<Tokens> for AuthenticatedClient {
+    fn into(self) -> Tokens {
+        self.tokens
+    }
 }
 
 impl AuthenticatedClient {
-    async fn refresh_tokens(&mut self) -> Result<()> {
-        if self.refresh_token.expires() < Utc::now() {
-            return Err(Error::TokenExpired);
+    pub fn new(graphql_url: Option<String>, tokens: Tokens) -> Self {
+        Self {
+            graphql_url: graphql_url.clone().unwrap_or(GRAPHQL_URL.to_string()),
+            http_client: reqwest::Client::new(),
+            client: Client::new(graphql_url),
+            tokens,
         }
-
-        let mut params = HashMap::new();
-
-        params.insert("client_id", CLIENT_ID);
-        params.insert("grant_type", "refresh_token");
-        params.insert("refresh_token", self.refresh_token.as_ref());
-
-        let body = serde_urlencoded::to_string(&params)?;
-
-        let response = self
-            .http_client
-            .post(&self.token_url)
-            .body(body)
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .send()
-            .await?;
-
-        let tokens = response.json::<RefreshTokenResponse>().await?;
-
-        self.access_token = Token::new(
-            tokens.access_token,
-            Utc::now() + Duration::seconds(tokens.expires_in),
-            TokenType::Access,
-        );
-
-        self.refresh_token = Token::new(
-            tokens.refresh_token,
-            Utc::now() + Duration::seconds(tokens.refresh_expires_in),
-            TokenType::Refresh,
-        );
-
-        Ok(())
     }
 
     async fn check_expiration(&mut self) -> Result<()> {
-        if self.access_token.expires() < Utc::now() {
-            self.refresh_tokens().await?;
+        if self.tokens.access_token().has_expired() {
+            if !self.tokens.refresh_token().has_expired() {
+                let token = self.tokens.refresh_token().content().to_string();
+
+                self.tokens = self.client.auth(LoginType::RefreshToken { token }).await?;
+            } else {
+                return Err(Error::TokenExpired);
+            }
         }
 
         Ok(())
@@ -211,7 +188,7 @@ impl AuthenticatedClient {
         let response = self
             .http_client
             .post(&self.graphql_url)
-            .bearer_auth(self.access_token.as_ref())
+            .bearer_auth(self.tokens.access_token().as_ref())
             .json(query)
             .send()
             .await?;
@@ -223,8 +200,12 @@ impl AuthenticatedClient {
         Ok(response_body.data)
     }
 
-    pub fn tokens(&self) -> (&Token, &Token) {
-        (&self.access_token, &self.refresh_token)
+    pub fn tokens(&self) -> &Tokens {
+        &self.tokens
+    }
+
+    pub fn client(&self) -> &Client {
+        &self.client
     }
 
     /// Reply to a publication, given that publications id.
