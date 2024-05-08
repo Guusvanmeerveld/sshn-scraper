@@ -34,11 +34,10 @@ fragment PublicationListItem on HousingPublication {
   startTime
   totalNumberOfApplications
 
-  url {
-    value
-  }
-
   unit {
+    complexType {
+      name
+    }
     rentBenefit
     externalUrl {
       value
@@ -52,11 +51,10 @@ fragment PublicationListItem on HousingPublication {
       }
     }
   }
-  #   allocationProcess {
-  #     ...PublicationListAllocationProcess
-  #   }
+
   applicantSpecific {
-    allocationChance
+    numberOfApplicantsWithHigherPriority
+    is100PercentMatch
   }
 }
 

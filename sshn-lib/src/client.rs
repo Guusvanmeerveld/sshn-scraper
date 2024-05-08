@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use async_trait::async_trait;
 use graphql_client::GraphQLQuery;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     constants::{CLIENT_ID, GRAPHQL_URL, LOCALE, REDIRECT_URI, TOKEN_URL},
     error::{Error, Result},
+    publication::{self, Publication},
     queries::{
         get_identity_config, get_publications_list,
         post_application::{self, HousingApplyState},
@@ -14,7 +16,12 @@ use crate::{
     tokens::{LoginResponse, Tokens},
 };
 
-pub struct Client {
+#[async_trait]
+pub trait Client {
+    async fn get_publications_list(&mut self, max: i64) -> Result<Vec<Publication>>;
+}
+
+pub struct UnAuthenticatedClient {
     graphql_url: String,
     http_client: reqwest::Client,
 }
@@ -25,7 +32,7 @@ pub enum LoginType {
     Password { username: String, password: String },
 }
 
-impl Client {
+impl UnAuthenticatedClient {
     pub fn new(graphql_url: Option<String>) -> Self {
         Self {
             graphql_url: graphql_url.unwrap_or(GRAPHQL_URL.to_string()),
@@ -86,13 +93,31 @@ impl Client {
         let tokens = self.auth(login_type).await?;
 
         let authenticated_client = AuthenticatedClient {
-            graphql_url: self.graphql_url.clone(),
-            http_client: reqwest::Client::new(),
             client: self,
             tokens,
         };
 
         Ok(authenticated_client)
+    }
+
+    async fn query<T: DeserializeOwned, Q: Serialize>(
+        &self,
+        query: &Q,
+        access_token: Option<&str>,
+    ) -> Result<T> {
+        let mut request = self.http_client.post(&self.graphql_url).json(query);
+
+        if let Some(access_token) = access_token {
+            request = request.bearer_auth(access_token)
+        }
+
+        let response = request.send().await?;
+
+        let response = response.error_for_status()?;
+
+        let response_body = response.json::<GraphqlResponse<T>>().await?;
+
+        Ok(response_body.data)
     }
 
     pub async fn get_endpoints(&self) -> Result<get_identity_config::ResponseData> {
@@ -102,24 +127,15 @@ impl Client {
 
         let request_body = GetIdentityConfig::build_query(variables);
 
-        let response = self
-            .http_client
-            .post(&self.graphql_url)
-            .json(&request_body)
-            .send()
-            .await?;
+        let data = self.query(&request_body, None).await?;
 
-        let body = response
-            .json::<GraphqlResponse<get_identity_config::ResponseData>>()
-            .await?;
-
-        Ok(body.data)
+        Ok(data)
     }
+}
 
-    pub async fn get_publications_list(
-        &self,
-        max: i64,
-    ) -> Result<get_publications_list::ResponseData> {
+#[async_trait]
+impl Client for UnAuthenticatedClient {
+    async fn get_publications_list(&mut self, max: i64) -> Result<Vec<Publication>> {
         let variables = get_publications_list::Variables {
             order_by: Some(get_publications_list::HousingPublicationsOrder::STARTDATE_ASC),
             first: Some(max),
@@ -130,25 +146,16 @@ impl Client {
 
         let request_body = GetPublicationsList::build_query(variables);
 
-        let response = self
-            .http_client
-            .post(&self.graphql_url)
-            .json(&request_body)
-            .send()
-            .await?;
+        let data: get_publications_list::ResponseData = self.query(&request_body, None).await?;
 
-        let body = response
-            .json::<GraphqlResponse<get_publications_list::ResponseData>>()
-            .await?;
+        let publications = publication::convert_publications(data)?;
 
-        Ok(body.data)
+        Ok(publications)
     }
 }
 
 pub struct AuthenticatedClient {
-    graphql_url: String,
-    http_client: reqwest::Client,
-    client: Client,
+    client: UnAuthenticatedClient,
     tokens: Tokens,
 }
 
@@ -161,9 +168,7 @@ impl Into<Tokens> for AuthenticatedClient {
 impl AuthenticatedClient {
     pub fn new(graphql_url: Option<String>, tokens: Tokens) -> Self {
         Self {
-            graphql_url: graphql_url.clone().unwrap_or(GRAPHQL_URL.to_string()),
-            http_client: reqwest::Client::new(),
-            client: Client::new(graphql_url),
+            client: UnAuthenticatedClient::new(graphql_url),
             tokens,
         }
     }
@@ -185,26 +190,16 @@ impl AuthenticatedClient {
     async fn query<Q: Serialize, T: DeserializeOwned>(&mut self, query: &Q) -> Result<T> {
         self.check_expiration().await?;
 
-        let response = self
-            .http_client
-            .post(&self.graphql_url)
-            .bearer_auth(self.tokens.access_token().as_ref())
-            .json(query)
-            .send()
-            .await?;
-
-        let response = response.error_for_status()?;
-
-        let response_body = response.json::<GraphqlResponse<T>>().await?;
-
-        Ok(response_body.data)
+        self.client
+            .query(query, Some(self.tokens.access_token().content()))
+            .await
     }
 
     pub fn tokens(&self) -> &Tokens {
         &self.tokens
     }
 
-    pub fn client(&self) -> &Client {
+    pub fn client(&self) -> &UnAuthenticatedClient {
         &self.client
     }
 
@@ -231,5 +226,26 @@ impl AuthenticatedClient {
         };
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Client for AuthenticatedClient {
+    async fn get_publications_list(&mut self, max: i64) -> Result<Vec<Publication>> {
+        let variables = get_publications_list::Variables {
+            order_by: Some(get_publications_list::HousingPublicationsOrder::STARTDATE_ASC),
+            first: Some(max),
+            locale: Some(String::from(LOCALE)),
+            after: None,
+            where_: None,
+        };
+
+        let request_body = GetPublicationsList::build_query(variables);
+
+        let data: get_publications_list::ResponseData = self.query(&request_body).await?;
+
+        let publications = publication::convert_publications(data)?;
+
+        Ok(publications)
     }
 }

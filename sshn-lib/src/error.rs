@@ -12,6 +12,8 @@ pub enum Error {
     TokenExpired,
     #[error("Missing refresh token to get new tokens")]
     MissingRefreshToken,
+    #[error("SSHN Api did not return valid publications")]
+    MissingPublications,
     #[error("The authentication endpoint is missing")]
     NoAuthUrl,
     #[error("Failed to parse url: {0}")]
