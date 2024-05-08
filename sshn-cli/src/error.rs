@@ -11,9 +11,6 @@ pub enum Error {
     #[error("SSHN Api did not return valid authorization code")]
     MissingAuthCode,
 
-    #[error("SSHN Api did not return valid publications")]
-    MissingPublications,
-
     #[error("Missing username and password credentials")]
     MissingCredentials,
 

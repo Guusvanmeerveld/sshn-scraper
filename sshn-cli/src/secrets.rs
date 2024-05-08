@@ -51,7 +51,7 @@ pub fn get<I: AsRef<str>, T: DeserializeOwned>(identifier: I) -> Result<T> {
 }
 
 pub async fn get_client() -> Result<AuthenticatedClient> {
-    let client = sshn_lib::Client::new(None);
+    let client = sshn_lib::UnAuthenticatedClient::new(None);
 
     if let Ok(tokens) = get::<_, Tokens>("tokens") {
         if !tokens.access_token().has_expired() {
@@ -70,7 +70,7 @@ pub async fn get_client() -> Result<AuthenticatedClient> {
     log::info!("Tokens expired, logging in using credentials");
 
     if let Ok(credentials) = get::<_, Credentials>("credentials") {
-        return auth::password_login(
+        return auth::headless_login(
             credentials.username,
             credentials.password,
             Default::default(),

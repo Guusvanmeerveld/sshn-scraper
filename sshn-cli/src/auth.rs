@@ -89,12 +89,12 @@ async fn start_web_driver(webdriver: WebDriver, port: u16) -> Result<tokio::proc
     Ok(process)
 }
 
-pub async fn password_login<U: AsRef<str>, P: AsRef<str>>(
+pub async fn headless_login<U: AsRef<str>, P: AsRef<str>>(
     username: U,
     password: P,
     options: AuthOptions,
 ) -> Result<AuthenticatedClient> {
-    let client = sshn_lib::Client::new(None);
+    let client = sshn_lib::UnAuthenticatedClient::new(None);
 
     let (code_challenge, code_verifier) = get_code_challenge();
 

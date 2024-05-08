@@ -1,7 +1,8 @@
+use sshn_lib::Client;
+
 use crate::{
     auth::{self, AuthOptions},
     error::Result,
-    publication::{self, Publication},
     secrets,
 };
 
@@ -10,36 +11,53 @@ pub async fn login<U: AsRef<str>, P: AsRef<str>>(
     password: P,
     options: AuthOptions,
 ) -> Result<()> {
-    auth::password_login(username.as_ref(), password.as_ref(), options).await?;
+    auth::headless_login(username.as_ref(), password.as_ref(), options).await?;
 
     Ok(())
 }
 
-pub async fn list(limit: usize) -> Result<()> {
-    let data = publication::list_publications(limit).await?;
+pub async fn list(limit: usize) -> Result<prettytable::Table> {
+    use prettytable::{Cell, Row, Table};
 
-    let mut table = prettytable::Table::new();
+    let limit = limit as i64;
 
-    table.add_row(prettytable::Row::new(
-        Publication::row_labels()
-            .iter()
-            .map(|label| prettytable::Cell::new(label))
-            .collect(),
-    ));
+    let publications = if false {
+        let mut client = sshn_lib::UnAuthenticatedClient::new(None);
 
-    for publication in data {
-        table.add_row(prettytable::Row::new(
-            publication
-                .as_row()
-                .iter()
-                .map(|label| prettytable::Cell::new(label))
-                .collect(),
-        ));
+        client.get_publications_list(limit).await?
+    } else {
+        let mut client = secrets::get_client().await?;
+
+        client.get_publications_list(limit).await?
+    };
+
+    let mut table = Table::new();
+
+    table.add_row(Row::new(vec![
+        Cell::new("Can reply?"),
+        Cell::new("Name"),
+        Cell::new("City"),
+        Cell::new("Number of applicants"),
+        Cell::new("Gross rent"),
+        Cell::new("ID"),
+    ]));
+
+    for publication in publications {
+        let nr_of_applicants_string = publication.nr_of_applicants().to_string();
+        let gross_rent_string = publication.rent().to_string();
+        let is_match = if publication.is_match() { "Yes" } else { "No" };
+
+        table.add_row(Row::new(vec![
+            Cell::new(is_match),
+            Cell::new(publication.name()),
+            Cell::new(publication.city()),
+            Cell::new(&nr_of_applicants_string),
+            Cell::new(&gross_rent_string),
+            Cell::new(publication.id()),
+        ]));
     }
 
-    table.printstd();
-
-    Ok(())
+    Ok(table)
 }
 
 pub async fn reply<I: AsRef<str>>(id: I) -> Result<()> {

@@ -1,14 +1,23 @@
 use clap::{Parser, Subcommand};
-use rpassword::prompt_password;
+use rpassword::read_password;
 use serde::Serialize;
 
 mod auth;
 mod commands;
 mod error;
-mod publication;
 mod secrets;
 
 use auth::AuthOptions;
+
+macro_rules! show {
+    ($($arg:tt)*) => ({
+        use colored::*;
+
+        let app_name = "[SSHN-CLI]".blue().bold();
+
+        println!("{} {}", app_name, format!($($arg)*));
+    });
+}
 
 /// SSHN command line interface.
 #[derive(Parser, Debug)]
@@ -60,14 +69,7 @@ pub enum WebDriver {
 
 #[tokio::main]
 async fn main() {
-    {
-        let mut builder = env_logger::Builder::from_default_env();
-
-        builder.filter_module("sshn_cli", log::LevelFilter::Info);
-        builder.filter_module("sshn_lib", log::LevelFilter::Info);
-
-        builder.init();
-    }
+    env_logger::init();
 
     let args = Args::parse();
 
@@ -81,14 +83,14 @@ async fn main() {
             let password = match password {
                 Some(pass) => pass,
                 None => {
-                    let password = prompt_password("Enter the password of your SSHN account: ")
-                        .expect("Failed to read password");
+                    show!("Enter the password of your {} account: ", "SSHN".bold());
+                    let password = read_password().expect("Failed to read password");
 
                     password
                 }
             };
 
-            log::info!("Logging in as user '{}'", username);
+            show!("Logging in as user '{}'", username.bold().green());
 
             match commands::login(
                 &username,
@@ -98,28 +100,40 @@ async fn main() {
             .await
             {
                 Ok(_) => {
-                    log::info!("Succesfully logged in as user '{}'", username)
+                    show!(
+                        "Succesfully logged in as user '{}'.",
+                        username.bold().green()
+                    )
                 }
                 Err(error) => {
-                    log::error!("Error logging in: {}", error);
+                    show!("Error logging in:\n\t {}", error);
                 }
             }
         }
 
         Commands::List { limit } => {
             match commands::list(limit.unwrap_or(5)).await {
-                Ok(_) => {}
+                Ok(table) => {
+                    table.printstd();
+                }
                 Err(error) => {
-                    log::error!("Error listing publications: {}", error);
+                    show!("Error listing publications:\n\t {}", error);
                 }
             };
         }
 
         Commands::Reply { id } => {
-            match commands::reply(id).await {
-                Ok(_) => {}
+            show!("Replying to publication...");
+
+            match commands::reply(&id).await {
+                Ok(_) => {
+                    show!(
+                        "Successfully replied to publication with id '{}'.",
+                        id.bold().green()
+                    )
+                }
                 Err(error) => {
-                    log::error!("Error replying to publication: {}", error);
+                    show!("Error replying to publication:\n\t {}", error);
                 }
             };
         }
