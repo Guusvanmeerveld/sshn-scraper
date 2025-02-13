@@ -47,6 +47,14 @@ pub enum Commands {
         /// The web driver to use to connect to the browser.
         #[arg(short, long, default_value_t, value_enum)]
         webdriver: WebDriver,
+
+        /// Whether to auto start the web driver.
+        #[arg(long)]
+        auto_start_webdriver: bool,
+
+        /// The port used to connect to the webdriver.
+        #[arg(long)]
+        webdriver_port: Option<u16>,
     },
 
     /// List the currently open publications.
@@ -77,8 +85,10 @@ async fn main() {
         Commands::Login {
             username,
             password,
-            webdriver,
             login_url,
+            webdriver,
+            auto_start_webdriver,
+            webdriver_port,
         } => {
             let password = match password {
                 Some(pass) => pass,
@@ -92,13 +102,19 @@ async fn main() {
 
             show!("Logging in as user '{}'", username.bold().green());
 
-            match commands::login(
-                &username,
-                &password,
-                AuthOptions::default().webdriver(webdriver),
-            )
-            .await
-            {
+            let mut auth_options = AuthOptions::default()
+                .webdriver(webdriver)
+                .auto_start_webdriver(auto_start_webdriver);
+
+            if let Some(webdriver_port) = webdriver_port {
+                auth_options = auth_options.webdriver_port(webdriver_port);
+            }
+
+            if let Some(login_url) = login_url {
+                auth_options = auth_options.login_base_url(login_url);
+            }
+
+            match commands::login(&username, &password, auth_options).await {
                 Ok(_) => {
                     show!(
                         "Succesfully logged in as user '{}'.",

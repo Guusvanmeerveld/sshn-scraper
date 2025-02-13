@@ -15,7 +15,7 @@ const LOGIN_FORM_ID: &str = "kc-form-login";
 pub struct AuthOptions {
     webdriver: WebDriver,
     webdriver_port: u16,
-
+    auto_start_webdriver: bool,
     login_base_url: Option<String>,
 }
 
@@ -27,6 +27,13 @@ impl AuthOptions {
     pub fn webdriver_port(self, webdriver_port: u16) -> Self {
         Self {
             webdriver_port,
+            ..self
+        }
+    }
+
+    pub fn auto_start_webdriver(self, auto_start_webdriver: bool) -> Self {
+        Self {
+            auto_start_webdriver,
             ..self
         }
     }
@@ -44,6 +51,7 @@ impl Default for AuthOptions {
         Self {
             login_base_url: None,
             webdriver: WebDriver::Chromium,
+            auto_start_webdriver: true,
             webdriver_port: 4444,
         }
     }
@@ -54,7 +62,7 @@ async fn start_web_driver(webdriver: WebDriver, port: u16) -> Result<tokio::proc
     let process = match webdriver {
         WebDriver::Chromium => tokio::process::Command::new("chromedriver")
             .arg(format!("--port={}", port))
-            .arg("--headless")
+            .arg("--headless=new")
             .spawn()?,
         WebDriver::Gecko => tokio::process::Command::new("geckodriver")
             .arg("--port")
@@ -113,29 +121,43 @@ pub async fn headless_login<U: AsRef<str>, P: AsRef<str>>(
 
     let login_url = generate_auth_url(login_base_url, code_challenge)?;
 
-    let mut driver = start_web_driver(options.webdriver, options.webdriver_port).await?;
+    let mut driver = if options.auto_start_webdriver {
+        let driver = start_web_driver(options.webdriver, options.webdriver_port).await?;
 
-    let browser = ClientBuilder::native()
-        .connect(&format!("http://localhost:{}", options.webdriver_port))
-        .await?;
+        Some(driver)
+    } else {
+        None
+    };
 
-    log::info!("Logging into SSHN at {}", login_url);
+    let callback_url = {
+        let browser = ClientBuilder::native()
+            .connect(&format!("http://localhost:{}", options.webdriver_port))
+            .await?;
 
-    browser.goto(&login_url).await?;
+        log::info!("Logging into SSHN at {}", login_url);
 
-    let login_form = browser.form(Locator::Id(LOGIN_FORM_ID)).await?;
+        browser.goto(&login_url).await?;
 
-    login_form
-        .set_by_name("username", username.as_ref())
-        .await?
-        .set_by_name("password", password.as_ref())
-        .await?
-        .submit_direct()
-        .await?;
+        let login_form = browser.form(Locator::Id(LOGIN_FORM_ID)).await?;
 
-    let callback_url = browser.current_url().await?;
+        login_form
+            .set_by_name("username", username.as_ref())
+            .await?
+            .set_by_name("password", password.as_ref())
+            .await?
+            .submit_direct()
+            .await?;
 
-    driver.kill().await?;
+        let callback_url = browser.current_url().await?;
+
+        browser.close_window().await?;
+
+        callback_url
+    };
+
+    if let Some(driver) = driver.as_mut() {
+        driver.kill().await?;
+    }
 
     let authorization_code = callback_url
         .query_pairs()

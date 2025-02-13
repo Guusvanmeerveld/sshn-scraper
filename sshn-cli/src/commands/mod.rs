@@ -21,7 +21,9 @@ pub async fn list(limit: usize) -> Result<prettytable::Table> {
 
     let limit = limit as i64;
 
-    let publications = if false {
+    let missing_credentials = secrets::get::<_, secrets::Credentials>("credentials").is_err();
+
+    let publications = if missing_credentials {
         let mut client = sshn_lib::UnAuthenticatedClient::new(None);
 
         client.get_publications_list(limit).await?
