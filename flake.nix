@@ -1,59 +1,57 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
 
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    naersk.url = "github:nix-community/naersk/master";
+    rust-overlay.url = "github:oxalica/rust-overlay";
 
-    flake-utils.url = "github:numtide/flake-utils";
+    utils.url = "github:numtide/flake-utils";
   };
 
   outputs = {
-    # self,
     nixpkgs,
-    crane,
-    flake-utils,
+    utils,
+    naersk,
+    rust-overlay,
     ...
   }:
-    flake-utils.lib.eachDefaultSystem (system: let
-      pkgs = nixpkgs.legacyPackages.${system};
+    utils.lib.eachDefaultSystem (
+      system: let
+        overlays = [(import rust-overlay)];
 
-      inherit (pkgs) lib;
-
-      craneLib = crane.lib.${system};
-
-      fileSetForCrate = crate:
-        lib.fileset.toSource {
-          root = ./.;
-          fileset = lib.fileset.unions [
-            ./Cargo.toml
-            ./Cargo.lock
-            ./sshn-lib
-            crate
-          ];
+        pkgs = import nixpkgs {
+          inherit system overlays;
         };
 
-      sshn-cli = craneLib.buildPackage {
-        inherit (craneLib.crateNameFromCargoToml {cargoToml = ./sshn-cli/Cargo.toml;}) version pname;
+        naersk-lib = pkgs.callPackage naersk {};
 
-        nativeBuildInputs = with pkgs; [pkg-config openssl];
+        buildDeps = with pkgs; [pkg-config openssl];
+        runtimeDeps = with pkgs; [pkg-config openssl];
+      in {
+        packages = {
+          default = naersk-lib.buildPackage {
+            nativeBuildInputs = buildDeps;
+            buildInputs = runtimeDeps;
 
-        buildInputs = with pkgs; [chromium chromedriver];
+            src = ./.;
+          };
+        };
 
-        cargoExtraArgs = "-p sshn-cli";
+        devShell = pkgs.mkShell rec {
+          nativeBuildInputs = buildDeps;
 
-        src = fileSetForCrate ./sshn-cli;
+          buildInputs = with pkgs;
+            [
+              (rust-bin.stable.latest.default.override {
+                extensions = ["rust-src"];
+              })
+              rust-analyzer-unwrapped
+            ]
+            ++ runtimeDeps;
 
-        # Add extra inputs here or any other derivation settings
-        doCheck = false;
-        # buildInputs = [];
-      };
-    in {
-      packages = {
-        sshn-cli = sshn-cli;
-        default = sshn-cli;
-      };
-    });
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (buildInputs ++ nativeBuildInputs);
+        };
+      }
+    );
 }
